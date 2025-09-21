@@ -7,14 +7,27 @@ import (
 	"log"
 	"net"
 	"strings"
-	"commands/command"
+	"time"
+	"os"
 )
 
 var memstore map[string]interface{}
 
+var events chan Event
+
+type Event struct {
+	cmd Command
+	Response chan string
+}
+
 func main() {
 	// in memory store.
 	memstore = make(map[string]interface{})
+	events = make(chan Event, 10)
+
+	go eventLoop()
+
+	restoreMemStore()
 
 	PORT := ":4141"
 	l, err := net.Listen("tcp4", PORT)
@@ -24,6 +37,8 @@ func main() {
 
 	defer l.Close()
 
+	fmt.Println("Server is listening for requests on", PORT)
+
 	for {
 		c, err := l.Accept()
 		if err != nil {
@@ -32,6 +47,23 @@ func main() {
 		}
 		go handleConnection(c)
 	}
+}
+
+func eventLoop() {
+	for event := range events {
+		// fmt.Println("Received event on event loop")
+		fmt.Println("[Event Loop]", event.cmd.cmdStr)
+		response := strings.TrimSpace(event.cmd.Execute())
+		fmt.Println("[Event Loop]", response)
+		event.Response <- response
+	}
+}
+
+func sendEvent(cmd Command) string {
+	resp := make(chan string)
+	// fmt.Println("pushing event to event queue")
+	events <- Event{cmd: cmd, Response: resp}
+	return <- resp
 }
 
 func handleConnection(c net.Conn) {
@@ -49,15 +81,15 @@ func handleConnection(c net.Conn) {
 			break
 		}
 
-		fmt.Printf(cmdLine)
-
 		command := parseCommand(cmdLine)
-		response := strings.TrimSpace(command.Execute())
 
+		response := sendEvent(command)
 		result := []byte(response + "\n")
 
 		c.Write(result)
 		fmt.Printf("[%s]: Response %s\n", c.RemoteAddr().String(), response)
+
+		go appendWriteToLog(command)
 	}
 }
 
@@ -114,6 +146,83 @@ func (c Command) Execute() string {
 	return "Command Error"
 }
 
+
+func (c Command) Persist() {
+	fields := strings.Fields(c.cmdStr)
+	if len(fields) == 0 {
+		return
+	}
+
+	operation := strings.ToLower(fields[0])
+	operation = strings.Trim(operation, "\x00")
+
+	switch operation {
+		case "set":
+			if len(fields) != 3 {
+				return
+			}
+
+			file, err := os.OpenFile("writes.aof", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+			defer file.Close()
+
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			_, err = file.WriteString(fmt.Sprintf("[%s] %s", time.Now(), c.cmdStr))
+
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
+			fmt.Println("Appended to disk log")
+			return
+	}
+
+	return
+}
+
 func parseCommand(cmdStr string) Command {
 	return Command{cmdStr}
+}
+
+func appendWriteToLog(command Command) {
+	command.Persist()
+}
+
+func restoreMemStore() {
+	filename := "writes.aof"
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		return
+	}
+
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
+		return
+	}
+
+	fmt.Println("Restoring database from AOF log")
+
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		logLine := scanner.Text()
+
+		fmt.Println(logLine)
+
+		cmdLine := strings.Split(logLine, "] ")[1]
+		command := parseCommand(cmdLine)
+		response := sendEvent(command)
+
+		fmt.Println(response)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
 }
