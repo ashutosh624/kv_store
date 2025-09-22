@@ -21,7 +21,7 @@ async function appendWriteToLog(command) {
 async function restoreMemStore(memstore) {
   try {
     await fs.access(AOF_FILE);
-    console.log('Restoring database from AOF log');
+    console.log('===========Restoring database from AOF log===========');
     
     const data = await fs.readFile(AOF_FILE, 'utf8');
     const lines = data.split('\n').filter(line => line.trim());
@@ -31,7 +31,7 @@ async function restoreMemStore(memstore) {
       if (cmdLine) {
         const command = new Command(cmdLine);
         const response = command.execute(memstore);
-        console.log(response);
+        console.log(cmdLine, response);
       }
     }
   } catch (error) {

@@ -22,7 +22,7 @@ class KVClient {
 
       this.socket.on('error', reject);
       this.socket.on('data', (data) => {
-        console.log(data.toString().trim());
+        console.log(data.toString().replace(/\\n/g, '\n').trim());
         this.prompt();
       });
     });

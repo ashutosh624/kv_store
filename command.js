@@ -24,7 +24,7 @@ class Command {
       case 'set':
         if (fields.length !== 3) return 'SET Command Error';
         memstore.set(fields[1], fields[2]);
-        return fields[2];
+        return 'OK';
       default:
         return 'Command Error';
     }
