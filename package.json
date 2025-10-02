@@ -1,21 +1,39 @@
 {
-  "name": "hello",
+  "name": "kvstore",
   "version": "1.0.0",
-  "description": "",
-  "main": "client.js",
+  "description": "A Redis-like key-value store with replication and persistence",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node index.js",
+    "start:master": "REPLICATION_ENABLED=true REPLICATION_ROLE=master node index.js",
+    "start:slave": "REPLICATION_ENABLED=true REPLICATION_ROLE=slave MASTER_HOST=localhost MASTER_PORT=4141 PORT=4142 node index.js",
+    "client": "node src/client/index.js",
+    "dev": "nodemon index.js",
+    "test": "jest",
+    "clean": "rm -rf data/*.aof data/*.log"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ashutosh624/kv_store.git"
   },
-  "keywords": [],
+  "keywords": [
+    "kvstore",
+    "redis",
+    "database",
+    "replication",
+    "persistence"
+  ],
   "author": "",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/ashutosh624/kv_store/issues"
   },
-  "homepage": "https://github.com/ashutosh624/kv_store#readme"
+  "homepage": "https://github.com/ashutosh624/kv_store#readme",
+  "dependencies": {
+    "minimist": "^1.2.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "jest": "^29.7.0"
+  }
 }
