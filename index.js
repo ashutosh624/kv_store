@@ -57,18 +57,18 @@ Environment variables:
 // Override config with command line arguments
 const serverConfig = {
   server: {
-    port: parseInt(argv.port),
+    port: parseInt(process.env.PORT) || parseInt(argv.port),
     host: argv.host
   },
   storage: {
     enablePersistence: argv.persistence,
-    aofFile: argv['aof-file'] || process.env.AOF_FILE || 'data/writes.aof'
+    aofFile: process.env.AOF_FILE || argv['aof-file'] || 'data/writes.aof'
   },
   replication: {
-    enabled: argv.replication || process.env.REPLICATION_ENABLED === 'true',
-    role: argv['replication-role'] || process.env.REPLICATION_ROLE || 'master',
-    masterHost: argv['master-host'] || process.env.MASTER_HOST,
-    masterPort: argv['master-port'] ? parseInt(argv['master-port']) : (process.env.MASTER_PORT ? parseInt(process.env.MASTER_PORT) : undefined)
+    enabled: process.env.REPLICATION_ENABLED === 'true' || argv.replication,
+    role: process.env.REPLICATION_ROLE || argv['replication-role'] || 'master',
+    masterHost: process.env.MASTER_HOST || argv['master-host'],
+    masterPort: process.env.MASTER_PORT ? parseInt(process.env.MASTER_PORT) : (argv['master-port'] ? parseInt(argv['master-port']) : undefined)
   }
 };
 
@@ -79,6 +79,7 @@ if (serverConfig.replication.enabled && serverConfig.replication.role === 'slave
     process.exit(1);
   }
 }
+
 
 // Start server
 const server = new KVServer(serverConfig);

@@ -27,7 +27,7 @@ class KVClient {
       });
 
       this.socket.on('data', (data) => {
-        const response = data.toString().replace(/\\\\n/g, '\n').trim();
+        const response = data.toString().replace(/\\n/g, '\n').trim();
         console.log(response);
         this.prompt();
       });
