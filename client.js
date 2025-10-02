@@ -1,8 +1,8 @@
 const net = require('net');
 const readline = require('readline');
 
-const HOST = 'localhost';
-const PORT = 4141;
+const HOST = process.argv[2] || 'localhost';
+const PORT = process.argv[3] || 4141;
 
 class KVClient {
   constructor() {

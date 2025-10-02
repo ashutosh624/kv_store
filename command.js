@@ -1,9 +1,15 @@
+const { getAOLog } = require('./persistence');
 class Command {
-  constructor(cmdStr) {
+  constructor(cmdStr, memstore, replicationServer = null, useReplication = false, socket = null) {
+    console.log('memstore', memstore);
     this.cmdStr = cmdStr;
+    this.memstore = memstore;
+    this.replicationServer = replicationServer;
+    this.socket = socket;
+    this.useReplication = useReplication;
   }
 
-  execute(memstore) {
+  async execute() {
     const fields = this.cmdStr.trim().split(/\s+/);
     if (fields.length === 0) {
       return "Command Error";
@@ -17,14 +23,39 @@ class Command {
       case 'ping':
         return 'PONG';
       case 'keys':
-        return Array.from(memstore.keys()).join('\\n');
+        return Array.from(this.memstore.keys()).join('\\n');
       case 'get':
         if (fields.length !== 2) return 'GET Syntax Error';
-        return memstore.get(fields[1]) || 'Key doesnot exist';
+        return this.memstore.get(fields[1]) || 'Key doesnot exist';
       case 'set':
+        // if (this.useReplication) return 'SET Error writing to read only follower.'
         if (fields.length !== 3) return 'SET Command Error';
-        memstore.set(fields[1], fields[2]);
+        this.memstore.set(fields[1], fields[2]);
         return 'OK';
+      case 'sync':
+        if (fields.length !== 3) return 'SYNC Command Error';
+        this.replicationServer.addFollower(fields[1], fields[2]);
+
+        let response = "";
+        try {
+          console.log('===========Restoring database from AOF log===========');
+
+          const data = await getAOLog();
+          const lines = data.split('\n').filter(line => line.trim());
+
+          
+          for (const line of lines) {
+            const cmdLine = line.split('] ')[1];
+            if (cmdLine) {
+              response += cmdLine + "\n";
+            }
+          }
+        } catch (error) {
+          if (error.code !== 'ENOENT') {
+            console.error('Error restoring from AOF:', error);
+          }
+        }
+        return response;
       default:
         return 'Command Error';
     }
