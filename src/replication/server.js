@@ -1,14 +1,17 @@
 const net = require('net');
+const fs = require('fs').promises;
 const Logger = require('../utils/logger');
 
-class ReplicationServer {
+class ReplicationManager {
   constructor() {
     this.followers = [];
-    this.logger = new Logger('ReplicationServer');
+    this.logger = new Logger('ReplicationManager');
+    this.replicationOffset = 0;
+    this.replicationId = this._generateReplicationId()
   }
 
-  addFollower(hostname, port) {
-    const follower = { hostname, port, id: `${hostname}:${port}` };
+  addFollower(hostname, port, socket) {
+    const follower = { hostname, port, id: `${hostname}:${port}`, connection: socket };
     
     // Check if already exists
     if (!this.followers.find(f => f.id === follower.id)) {
@@ -35,14 +38,28 @@ class ReplicationServer {
     const cmdStr = command.args.join(' ');
     this.logger.debug(`Replicating command to ${this.followers.length} followers: ${cmdStr}`);
 
-    const replicationPromises = this.followers.map(follower => 
-      this._sendToFollower(follower, cmdStr)
-    );
+    // Allows partial resync and command buffering.
+    await this._appendToReplicationLog(cmdStr)
+
+    const replicationPromises = this.followers.map(follower => this._sendToFollower(follower, cmdStr));
 
     try {
       await Promise.allSettled(replicationPromises);
     } catch (error) {
       this.logger.error('Some replications failed:', error);
+    }
+  }
+
+  async _appendToReplicationLog(cmdStr) {
+    try {
+      const timestamp = new Date().toISOString();
+      const logEntry = `[${timestamp}] ${cmdStr}\n`;
+
+      await fs.appendFile(`data/replication_${this.replicationId}.log`, logEntry);
+      this.logger.debug('Appended command to replication log:', cmdStr);
+    } catch (error) {
+      this.logger.error('Failed to append to replication log:', error);
+      throw error;
     }
   }
 
@@ -67,9 +84,13 @@ class ReplicationServer {
     });
   }
 
+  _generateReplicationId() {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+
   getFollowers() {
     return [...this.followers];
   }
 }
 
-module.exports = ReplicationServer;
+module.exports = ReplicationManager;

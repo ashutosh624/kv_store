@@ -13,8 +13,8 @@ class SyncCommand extends BaseCommand {
     const [, hostname, port] = this.args;
     
     // Add follower to replication server
-    if (context.replicationServer) {
-      context.replicationServer.addFollower(hostname, parseInt(port));
+    if (context.replicationManager) {
+      context.replicationManager.addFollower(hostname, parseInt(port), context.connection);
     }
 
     // Return AOF log for initial sync

@@ -2,7 +2,7 @@ const net = require('net');
 const config = require('../config/default');
 const MemStore = require('../storage/memstore');
 const Persistence = require('../storage/persistence');
-const ReplicationServer = require('../replication/server');
+const ReplicationManager = require('../replication/server');
 const ReplicationClient = require('../replication/client');
 const ConnectionHandler = require('./connection');
 const CommandFactory = require('../commands');
@@ -13,7 +13,7 @@ class KVServer {
     this.config = { ...config, ...options };
     this.memstore = new MemStore();
     this.persistence = null;
-    this.replicationServer = null;
+    this.replicationManager = null;
     this.replicationClient = null;
     this.server = null;
     this.logger = new Logger('KVServer');
@@ -35,7 +35,7 @@ class KVServer {
       // Initialize replication
       if (this.config.replication.enabled) {
         if (this.config.replication.role === 'master') {
-          this.replicationServer = new ReplicationServer();
+          this.replicationManager = new ReplicationManager();
           this.logger.info('Started as master server');
         } else if (this.config.replication.role === 'slave') {
           this.replicationClient = new ReplicationClient({
@@ -53,14 +53,14 @@ class KVServer {
       // Create context for command execution
       const context = {
         persistence: this.persistence,
-        replicationServer: this.replicationServer,
+        replicationManager: this.replicationManager,
         replicationClient: this.replicationClient,
         config: this.config
       };
 
       // Start TCP server
       this.server = net.createServer((socket) => {
-        new ConnectionHandler(socket, this.memstore, context);
+        new ConnectionHandler(socket, this.memstore, {...context, socket});
       });
       
       this.server.listen(this.config.server.port, this.config.server.host, () => {

@@ -1,4 +1,5 @@
 const net = require('net');
+const fs = require('fs').promises;
 const Logger = require('../utils/logger');
 
 class ReplicationClient {
@@ -9,6 +10,8 @@ class ReplicationClient {
     this.localPort = config.localPort;
     this.socket = null;
     this.logger = new Logger('ReplicationClient');
+    this.replicationId = null;
+    this.replicationOffset = 0;
   }
 
   async initReplication(memstore, commandFactory) {
@@ -21,7 +24,7 @@ class ReplicationClient {
 
       this.socket = net.createConnection(this.masterPort, this.masterHost, () => {
         this.logger.info('Connected to master server');
-        
+
         // Send SYNC command to register as follower
         const syncCmd = `SYNC ${this.localHost} ${this.localPort}\n`;
         this.socket.write(syncCmd);
@@ -94,6 +97,19 @@ class ReplicationClient {
       });
     }, 5000); // Retry every 5 seconds
   }
+
+  // async _appendToReplicationLog(cmdStr) {
+  //   try {
+  //     const timestamp = new Date().toISOString();
+  //     const logEntry = `[${timestamp}] ${cmdStr}\n`;
+
+  //     await fs.appendFile(`data/replication_${this.replicationId}.log`, logEntry);
+  //     this.logger.debug('Appended command to replication log:', cmdStr);
+  //   } catch (error) {
+  //     this.logger.error('Failed to append to replication log:', error);
+  //     throw error;
+  //   }
+  // }
 
   close() {
     if (this.socket) {

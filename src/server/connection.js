@@ -39,7 +39,7 @@ class ConnectionHandler {
 
       // Parse command
       const parsed = CommandParser.parse(cmdLine);
-      
+
       // Create command
       const command = CommandFactory.create(parsed.operation, [parsed.operation, ...parsed.args], this.context);
       
@@ -57,9 +57,9 @@ class ConnectionHandler {
       }
 
       // Handle replication
-      if (this.context.replicationServer && command.shouldReplicate()) {
+      if (this.context.replicationManager && command.shouldReplicate()) {
         setImmediate(() => {
-          this.context.replicationServer.replicateCommand(command).catch(error => {
+          this.context.replicationManager.replicateCommand(command).catch(error => {
             this.logger.error('Replication failed:', error);
           });
         });
