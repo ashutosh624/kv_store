@@ -11,12 +11,35 @@ class ReplicationManager {
   }
 
   addFollower(socket) {
-    const follower = {id: `${socket.remoteAddress}:${socket.remotePort}`, connection: socket };
+    const follower = {
+      id: `${socket.remoteAddress}:${socket.remotePort}`,
+      connection: socket,
+      connected: true
+    };
+
+    // Remove existing follower with same ID
+    this.followers = this.followers.filter(f => f.id !== follower.id);
     
+    socket.on('close', () => {
+      this.removeFollower(follower.id);
+    });
+
+    socket.on('error', (error) => {
+      this.logger.error(`Follower ${follower.id} error:`, error);
+      this.removeFollower(follower.id);
+    })
+
     // Check if already exists
-    if (!this.followers.find(f => f.id === follower.id)) {
-      this.followers.push(follower);
-      this.logger.info(`Added follower: ${follower.id}`);
+    this.followers.push(follower);
+    this.logger.info(`Added follower: ${follower.id}`);
+  }
+
+  removeFollower(followerId) {
+    const initialLength = this.followers.length;
+    this.followers = this.followers.filter(f => f.id !== followerId);
+
+    if (this.followers.length < initialLength) {
+      this.logger.info(`Removed follower: ${followerId}`);
     }
   }
 
@@ -72,7 +95,24 @@ class ReplicationManager {
   }
 
   async _sendToFollower(follower, cmdStr) {
-    follower.connection.write(cmdStr + '\n')
+    return new Promise((resolve, reject) => {
+      if (!follower.connection.writable) {
+        this.removeFollower(follower.id)
+        reject(new Error(`Follower ${follower.id} not writable`));
+        return;
+      }
+
+      follower.connection.write(cmdStr + '\n', (error) => {
+        if (error) {
+          this.logger.error(`Failed to replicate to ${follower.id}:`, error);
+          this.removeFollower(follower.id);
+          reject(error);
+        } else {
+          resolve();
+        }
+      })
+    })
+    
   }
 
   _generateReplicationId() {
