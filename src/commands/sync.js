@@ -7,24 +7,15 @@ class SyncCommand extends BaseCommand {
 
   async execute(memstore, context) {
     if (!this.validate()) {
-      throw new Error('SYNC command requires exactly 2 arguments: SYNC hostname port');
+      throw new Error('SYNC command requires exactly 2 arguments: SYNC replicationId replicationOffset');
     }
 
-    const [, hostname, port] = this.args;
+    const [, replicationId, replicationOffset] = this.args;
     
     // Add follower to replication server
     if (context.replicationManager) {
-      context.replicationManager.addFollower(hostname, parseInt(port), context.connection);
-    }
-
-    // Return AOF log for initial sync
-    if (context.persistence) {
-      try {
-        const aofData = await context.persistence.getAOFLog();
-        return aofData || '';
-      } catch (error) {
-        return '';
-      }
+      context.replicationManager.addFollower(context.socket);
+      return await context.replicationManager.syncFollower(replicationId, replicationOffset, context);
     }
 
     return '';

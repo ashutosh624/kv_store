@@ -10,8 +10,8 @@ class ReplicationManager {
     this.replicationId = this._generateReplicationId()
   }
 
-  addFollower(hostname, port, socket) {
-    const follower = { hostname, port, id: `${hostname}:${port}`, connection: socket };
+  addFollower(socket) {
+    const follower = {id: `${socket.remoteAddress}:${socket.remotePort}`, connection: socket };
     
     // Check if already exists
     if (!this.followers.find(f => f.id === follower.id)) {
@@ -20,17 +20,23 @@ class ReplicationManager {
     }
   }
 
-  removeFollower(hostname, port) {
-    const id = `${hostname}:${port}`;
-    const index = this.followers.findIndex(f => f.id === id);
-    
-    if (index !== -1) {
-      this.followers.splice(index, 1);
-      this.logger.info(`Removed follower: ${id}`);
+
+  async syncFollower(followerId, followerOffset, context) {
+    this.logger.debug(`Recieved SYNC request from follower ${followerId} ${followerOffset}`)
+    // Return AOF log for initial sync
+    if (followerId == '?' && followerOffset == '-1' && context.persistence) {
+      try {
+        const aofData = await context.persistence.getAOFLog();
+        // add full resync header
+        const response = `+FULLRESYNC ${this.replicationId} ${this.replicationOffset}\n` + aofData
+        return response || '';
+      } catch (error) {
+        return '';
+      }
     }
   }
 
-  async replicateCommand(command) {
+  async replicateCommandToFollowers(command) {
     if (!command.shouldReplicate() || this.followers.length === 0) {
       return;
     }
@@ -39,7 +45,9 @@ class ReplicationManager {
     this.logger.debug(`Replicating command to ${this.followers.length} followers: ${cmdStr}`);
 
     // Allows partial resync and command buffering.
-    await this._appendToReplicationLog(cmdStr)
+    await this._appendToReplicationLog(cmdStr);
+    this.replicationOffset += cmdStr.length + 1;
+    this.logger.debug('Master ReplicationOffset', this.replicationOffset);
 
     const replicationPromises = this.followers.map(follower => this._sendToFollower(follower, cmdStr));
 
@@ -55,7 +63,7 @@ class ReplicationManager {
       const timestamp = new Date().toISOString();
       const logEntry = `[${timestamp}] ${cmdStr}\n`;
 
-      await fs.appendFile(`data/replication_${this.replicationId}.log`, logEntry);
+      await fs.appendFile(`data/replication_master_${this.replicationId}.log`, logEntry);
       this.logger.debug('Appended command to replication log:', cmdStr);
     } catch (error) {
       this.logger.error('Failed to append to replication log:', error);
@@ -64,24 +72,7 @@ class ReplicationManager {
   }
 
   async _sendToFollower(follower, cmdStr) {
-    return new Promise((resolve, reject) => {
-      const socket = net.createConnection(follower.port, follower.hostname, () => {
-        this.logger.debug(`Connected to follower ${follower.id}`);
-        socket.write(cmdStr + '\n');
-        socket.end();
-        resolve();
-      });
-
-      socket.on('error', (error) => {
-        this.logger.warn(`Failed to replicate to ${follower.id}:`, error.message);
-        reject(error);
-      });
-
-      socket.setTimeout(5000, () => {
-        socket.destroy();
-        reject(new Error(`Timeout connecting to ${follower.id}`));
-      });
-    });
+    follower.connection.write(cmdStr + '\n')
   }
 
   _generateReplicationId() {

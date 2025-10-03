@@ -1,6 +1,7 @@
 const CommandFactory = require('../commands');
 const CommandParser = require('../utils/parser');
 const Logger = require('../utils/logger');
+const config = require('../config/default')
 
 class ConnectionHandler {
   constructor(socket, memstore, context = {}) {
@@ -40,9 +41,13 @@ class ConnectionHandler {
       // Parse command
       const parsed = CommandParser.parse(cmdLine);
 
+      if (this._writeOperationOnReadOnlyReplica(parsed.operation)) {
+        throw new Error('Write operation on a read only replica')
+      }
+
       // Create command
       const command = CommandFactory.create(parsed.operation, [parsed.operation, ...parsed.args], this.context);
-      
+
       // Execute command
       const result = await command.execute(this.memstore, this.context);
       this.sendResponse(result);
@@ -59,7 +64,7 @@ class ConnectionHandler {
       // Handle replication
       if (this.context.replicationManager && command.shouldReplicate()) {
         setImmediate(() => {
-          this.context.replicationManager.replicateCommand(command).catch(error => {
+          this.context.replicationManager.replicateCommandToFollowers(command).catch(error => {
             this.logger.error('Replication failed:', error);
           });
         });
@@ -76,6 +81,10 @@ class ConnectionHandler {
       this.socket.write(response + '\n');
       this.logger.debug('Response sent:', response);
     }
+  }
+
+  _writeOperationOnReadOnlyReplica(operation) {
+    return config.replication.enabled && config.replication.role === 'slave' && operation.toLowerCase() === 'set';
   }
 }
 
